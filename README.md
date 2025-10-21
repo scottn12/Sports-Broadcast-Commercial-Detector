@@ -12,11 +12,13 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
 
 - **🎥 Chrome Tab Capture**: Direct browser tab capture using Selenium WebDriver
 - **🤖 Real-time AI Detection**: ResNet-50 model classifies content as "game" or "commercial"
-- **🔇 Automatic Muting**: Mutes Chrome during commercials (Windows)
+- **🔇 Automatic Muting**: Mutes Chrome during commercials (Windows only)
+- **🎵 Media Control**: Automatically play/pause system media (Spotify, etc.) during transitions
 - **⚙️ Configurable**: Adjustable confidence thresholds, cooldown periods, and smoothing
-- **📸 Transition Logging**: Saves screenshots and logs all detected transitions
-- **🎯 Smart Filtering**: Uses confidence thresholds to reduce false positives
+- **📸 Transition Logging**: Saves screenshots and logs all detected transitions (optional)
+- **🎯 Smart Filtering**: Uses confidence thresholds and smoothing to reduce false positives
 - **💾 Persistent Profile**: Sign in once - Chrome remembers your logins
+- **🔄 Automatic Chrome Setup**: Automatically starts Chrome in debug mode for seamless capture
 
 ## 🚀 Quick Start
 
@@ -44,9 +46,14 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
    
    This automatically installs ChromeDriver via `webdriver-manager` - no manual setup needed!
 
-3. **You're ready to go!**
-   - Use the included `nfl_classifier_best.pth` model, or
-   - Train your own model using `train_nfl_classifier.py`
+3. **Download or train the model**
+   
+   > **Note**: The pre-trained model (`nfl_classifier_best.pth`, ~92 MB) is **not included** in this repository due to its large file size. You have two options:
+   
+   - **Option A**: Train your own model using `train_nfl_classifier.py` (see [Model Training](#-model-training) section)
+   - **Option B**: In the future, a pre-trained model may be made available in the [Releases](https://github.com/scottn12/NFL_Detector/releases) section. If available, download it and place it in the project root directory.
+
+4. **You're ready to go!**
 
 ### Basic Usage
 
@@ -55,21 +62,23 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
    python detector.py
    ```
 
-2. **The system will:**
-   - Automatically start Chrome in debug mode (if not already running)
-   - Use a persistent profile (sign in once, stays logged in)
-   - Prompt you to navigate to your NFL stream
+2. **Chrome starts automatically**
+   - The detector automatically closes any existing Chrome instances
+   - Starts Chrome in debug mode with a persistent profile
+   - Uses a separate profile directory (sign in once, stays logged in)
+   - Waits for Chrome to be ready
    
 3. **Navigate to your stream**
-   - Open your NFL stream in the Chrome window that appears
-   - Start the video playing
-   - Come back and press ENTER
+   - In the Chrome window that appears, go to your NFL stream
+   - Start the video playing (fullscreen recommended)
+   - Return to the terminal and press ENTER
 
 4. **Automatic detection begins!**
    - Monitors the Chrome tab for game/commercial transitions
    - Automatically mutes Chrome during commercials
    - Unmutes when game resumes
-   - Press `Ctrl+C` to stop (audio automatically restored)
+   - Optionally plays/pauses system media (Spotify, etc.)
+   - Press `Ctrl+C` to stop (audio and media automatically restored)
 
 ### Example Session
 
@@ -117,14 +126,21 @@ Press ENTER when your stream is playing and ready...
 Edit settings in `config.py` to tune performance:
 
 ```python
+# Detection Parameters
 DETECTION_CONFIG = {
     'threshold': 0.6,              # Classification threshold (0.5-0.7)
-    'cooldown_seconds': 20,        # Min time between transitions (10-30s)
+    'cooldown_seconds': 0,         # Min time between transitions (0-30s, 0 = disabled)
     'check_interval': 1.0,         # Check frequency in seconds
     'smoothing_window': 5,         # Number of predictions to average (3-7)
-    'auto_mute': True,             # Enable automatic muting
+    'auto_mute': True,             # Enable automatic Chrome muting
     'min_confidence': 0.90,        # Minimum confidence for transitions (0.8-0.95)
-    'control_media': False,        # Play Spotify/music during commercials
+    'control_media': True          # Play/pause system media during transitions
+}
+
+# Runtime Configuration  
+RUNTIME_CONFIG = {
+    'duration': None,              # Runtime limit in seconds (None = run forever)
+    'save_transitions': False      # Save screenshots of transitions
 }
 ```
 
@@ -132,16 +148,29 @@ DETECTION_CONFIG = {
 
 If you're getting too many false positives:
 
-1. **Increase `min_confidence`** to 0.95
-2. **Increase `threshold`** to 0.65-0.7
-3. **Increase `cooldown_seconds`** to 30
-4. **Increase `smoothing_window`** to 7
+1. **Increase `min_confidence`** to 0.95 (from 0.90)
+2. **Increase `threshold`** to 0.65-0.7 (from 0.6)
+3. **Enable `cooldown_seconds`** to 20-30 (default is 0 = disabled)
+4. **Increase `smoothing_window`** to 7 (from 5)
 
-### Media Control (Optional)
+### Media Control
 
-Set `control_media: True` in config to automatically:
-- ▶️ Play system media (Spotify, etc.) during commercials
-- ⏸️ Pause media when game resumes
+Enable or disable media control in `config.py`:
+
+```python
+'control_media': True    # Toggle system media during transitions
+```
+
+When enabled, the detector will:
+- ▶️ **Play** system media (Spotify, iTunes, etc.) when commercials start
+- ⏸️ **Pause** system media when game resumes
+
+**How it works:**
+- Uses Windows Media Control API (`VK_MEDIA_PLAY_PAUSE`)
+- Works with any media player that responds to system media keys
+- Same as pressing the play/pause button on your keyboard
+
+**Note:** This toggles play/pause, so make sure your media player is in the correct initial state (paused when detection starts if watching the game).
 
 ## 🏗️ Project Structure
 
@@ -238,18 +267,25 @@ Transition screenshots are automatically saved in `transitions/`:
 ### Chrome Issues
 
 **"Chrome failed to start in debug mode"**
-- Close all Chrome windows manually: `taskkill /F /IM chrome.exe`
-- Run `python detector.py` again (Chrome starts automatically)
+
+- The detector automatically closes Chrome and restarts it
+- If Chrome won't close, manually kill it: `taskkill /F /IM chrome.exe`
+- Then run `python detector.py` again
+- Make sure no other processes are using port 9222
 
 **"Chrome tab capture failed"**
+
 - Make sure the video is playing in Chrome
-- Navigate to your stream and press play
-- The detector needs an active Chrome tab to capture
+- Navigate to your stream in the Chrome window that opened
+- Start the video and press play
+- The detector captures from the active Chrome tab
 
 **"Could not initialize audio control"**
+
 - Audio control initializes when Chrome starts playing audio
 - Make sure your stream is playing with sound
-- Check Windows audio permissions
+- Check that Chrome has permission to play audio in Windows
+- The detector will retry audio initialization automatically
 
 ### Detection Issues
 
@@ -268,6 +304,15 @@ Transition screenshots are automatically saved in `transitions/`:
 - **GPU Acceleration**: Install CUDA-compatible PyTorch for faster inference
 - **Check Interval**: Increase to 2-3 seconds in config if CPU usage is high
 - **Fullscreen**: Use fullscreen video for best detection accuracy
+- **Persistent Profile**: Chrome profile is saved, so you only need to log in once
+
+### Clean Exit
+
+When you stop the detector with `Ctrl+C`, it automatically:
+- **Unmutes Chrome** (restores audio)
+- **Pauses media** (if media control is enabled and commercial was playing)
+- **Closes Chrome** (to free up resources)
+- **Shows session summary** (runtime, transitions detected, etc.)
 
 ## 📋 Dependencies
 
