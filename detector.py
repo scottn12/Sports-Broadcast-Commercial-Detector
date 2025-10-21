@@ -74,11 +74,9 @@ class NFLTransitionDetector:
             check_interval: Seconds between screen captures
             smoothing_window: Number of predictions to average for stability
             auto_mute: Automatically mute browser during commercials (Windows only)
-            browser: Browser to control ('chrome' recommended for tab capture)
             min_confidence: Minimum confidence required to trigger transition (default 0.65)
             control_media: Play system media (Spotify, etc.) during commercials, pause during game
             chrome_debug_port: Port for Chrome remote debugging (default 9222)
-            use_existing_chrome: Connect to existing Chrome instance instead of launching new one
         """
         # Load model
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -99,6 +97,7 @@ class NFLTransitionDetector:
         self.min_confidence = min_confidence
         self.control_media = control_media
         self.chrome_debug_port = chrome_debug_port
+        self.save_transitions = True  # Default, can be overridden in run()
 
         # State tracking
         self.current_state = None  # "game" or "commercial"
@@ -109,11 +108,6 @@ class NFLTransitionDetector:
         self.transition_count = 0
         self.start_time = time.time()
         self.state_start_time = None
-
-        # Optional: save screenshots of transitions
-        self.save_transitions = True
-        if self.save_transitions:
-            os.makedirs("transitions", exist_ok=True)
 
         # Selenium WebDriver for Chrome tab capture
         self.driver = None
@@ -600,13 +594,20 @@ class NFLTransitionDetector:
         image.save(filename)
         print(f"   📸 Screenshot saved: {filename}")
 
-    def run(self, duration=None):
+    def run(self, duration=None, save_transitions=True):
         """
         Main detection loop
 
         Args:
             duration: Optional runtime limit in seconds (None = run forever)
+            save_transitions: Determines if we should save transition screenshots for this run
         """
+
+        self.save_transitions = save_transitions
+
+        # Create transitions directory if needed
+        if self.save_transitions:
+            os.makedirs("transitions", exist_ok=True)
         print("=" * 70)
         print("NFL BROADCAST TRANSITION DETECTOR")
         print("=" * 70)
@@ -768,6 +769,6 @@ if __name__ == "__main__":
     # Run detector
     try:
         if not aborted:
-            detector.run(duration=RUNTIME_CONFIG["duration"])
+            detector.run(**RUNTIME_CONFIG)
     finally:
         detector.cleanup()
