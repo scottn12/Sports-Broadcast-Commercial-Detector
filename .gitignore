@@ -1,0 +1,5 @@
+/data
+/transitions
+/__pycache__
+/.vscode
+*.pth
