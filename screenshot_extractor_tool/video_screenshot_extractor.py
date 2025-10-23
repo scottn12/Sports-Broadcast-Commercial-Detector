@@ -20,6 +20,7 @@ import os
 import argparse
 import sys
 from pathlib import Path
+import time
 
 
 def extract_screenshots(
@@ -70,7 +71,7 @@ def extract_screenshots(
 
     screenshot_count = 0
     frame_number = 0
-    
+
     # Track counts for each split if distributing
     train_count = 0
     val_count = 0
@@ -98,8 +99,8 @@ def extract_screenshots(
         # Generate timestamp for filename
         timestamp_seconds = frame_number / fps
 
-        # Create filename with timestamp
-        filename = f"{video_name}_screenshot_{screenshot_count+1:04d}_{timestamp_seconds:.1f}s.jpg"
+        # Create filename with timestamp and epoch (to avoid overwriting if used multiple times)
+        filename = f"{video_name}_screenshot_{screenshot_count+1:04d}_{timestamp_seconds:.1f}s_{time.time()}.jpg"
 
         # Determine destination folder using round-robin distribution
         if distribute:
@@ -149,14 +150,14 @@ def extract_screenshots(
     print(f"\nExtraction complete!")
     print(f"Total screenshots extracted: {screenshot_count}")
     print(f"Screenshots saved to: {output_folder}")
-    
+
     if distribute:
         print(f"\nDistribution Summary:")
         print(f"  - Train: {train_count} ({train_count/screenshot_count*100:.1f}%)")
         print(f"  - Val:   {val_count} ({val_count/screenshot_count*100:.1f}%)")
         print(f"  - Test:  {test_count} ({test_count/screenshot_count*100:.1f}%)")
         return (screenshot_count, train_count, val_count, test_count)
-    
+
     return screenshot_count
 
 
@@ -202,7 +203,7 @@ def main():
     result = extract_screenshots(
         args.video_path, args.output_folder, args.interval, args.distribute
     )
-    
+
     # Handle return value based on whether distribute was used
     screenshot_count = result[0] if isinstance(result, tuple) else result
 
