@@ -11,7 +11,7 @@ import argparse
 
 
 # 1. Dataset class
-class GameDataset(Dataset):
+class SportsDataset(Dataset):
     def __init__(self, image_dir, transform=None):
         """
         Expects directory structure:
@@ -293,9 +293,9 @@ if __name__ == "__main__":
     #     game/
     #     commercial/
 
-    train_dataset = GameDataset(os.path.join(data_dir, "train"), transform=train_transform)
-    val_dataset = GameDataset(os.path.join(data_dir, "val"), transform=test_transform)
-    test_dataset = GameDataset(os.path.join(data_dir, "test"), transform=test_transform)
+    train_dataset = SportsDataset(os.path.join(data_dir, "train"), transform=train_transform)
+    val_dataset = SportsDataset(os.path.join(data_dir, "val"), transform=test_transform)
+    test_dataset = SportsDataset(os.path.join(data_dir, "test"), transform=test_transform)
 
     print(f"Training samples: {len(train_dataset)}")
     print(f"Validation samples: {len(val_dataset)}")

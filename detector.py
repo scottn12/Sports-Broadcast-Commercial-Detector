@@ -1,8 +1,9 @@
 """
-NFL Broadcast Commercial Detector
+Sports Broadcast Commercial Detector
 Monitors Chrome browser tab and detects when broadcast transitions between game and commercials
 Automatically mutes Chrome during commercials (Windows)
 Uses Chrome's tab capture API via Selenium for reliable screenshot capture
+Supports multiple sports (NFL, NBA, MLB, NHL, etc.) via different trained models
 """
 
 import torch
@@ -15,7 +16,7 @@ import time
 from datetime import datetime
 import os
 from collections import deque
-from config import MODEL_PATH, DETECTION_CONFIG, RUNTIME_CONFIG
+from config import DEFAULT_SPORT, DETECTION_CONFIG, RUNTIME_CONFIG
 from pycaw.pycaw import AudioUtilities
 import subprocess
 import base64
@@ -25,6 +26,7 @@ from selenium.common.exceptions import WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 import socket
+import argparse
 
 
 # Model setup
@@ -51,24 +53,27 @@ transform = transforms.Compose(
 )
 
 
-class NFLTransitionDetector:
+class SportsTransitionDetector:
     def __init__(
         self,
         model_path,
-        threshold=0.5,
-        cooldown_seconds=30,
-        check_interval=2.0,
-        smoothing_window=3,
-        auto_mute=True,
-        min_confidence=0.65,
-        control_media=False,
+        sport,
+        threshold,
+        cooldown_seconds,
+        check_interval,
+        smoothing_window,
+        auto_mute,
+        min_confidence,
+        control_media,
+        browser="chrome",
         chrome_debug_port=9222,
     ):
         """
-        Initialize the NFL transition detector
+        Initialize the sports broadcast transition detector
 
         Args:
             model_path: Path to trained model (.pth file)
+            sport: Sport name (e.g., 'nfl', 'nba', 'mlb') for display purposes
             threshold: Confidence threshold for classification (0-1)
             cooldown_seconds: Minimum time between state transitions
             check_interval: Seconds between screen captures
@@ -78,9 +83,10 @@ class NFLTransitionDetector:
             control_media: Play system media (Spotify, etc.) during commercials, pause during game
             chrome_debug_port: Port for Chrome remote debugging (default 9222)
         """
-        # Load model
+
+        self.sport = sport.upper()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Loading model on {self.device}...")
+        print(f"Loading {self.sport.upper()} model on {self.device}...")
 
         self.model = create_model()
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
@@ -93,7 +99,7 @@ class NFLTransitionDetector:
         self.check_interval = check_interval
         self.smoothing_window = smoothing_window
         self.auto_mute = auto_mute
-        self.browser = "chrome"
+        self.browser = browser
         self.min_confidence = min_confidence
         self.control_media = control_media
         self.chrome_debug_port = chrome_debug_port
@@ -164,7 +170,7 @@ class NFLTransitionDetector:
             if sock.connect_ex(("127.0.0.1", self.chrome_debug_port)) == 0:
                 sock.close()
                 chrome_started = True
-                print(f"   ✓ Chrome is ready! (took {waited}s)")
+                print(f"   Chrome is ready! (took {waited}s)")
                 break
             sock.close()
             if waited % 5 == 0:
@@ -261,7 +267,9 @@ class NFLTransitionDetector:
 
         # Start Chrome with debug port using a PERSISTENT separate profile
         # This profile will save your logins, so you only need to sign in once
-        debug_profile_dir = os.path.join(os.path.expanduser("~"), "chrome-nfl-detector")
+        debug_profile_dir = os.path.join(
+            os.path.expanduser("~"), "chrome-sports-detector"
+        )
 
         chrome_args = [
             chrome_path,
@@ -392,7 +400,7 @@ class NFLTransitionDetector:
             subprocess.run(
                 ["powershell", "-Command", ps_command],
                 capture_output=True,
-                timeout=2,
+                timeout=1,
                 check=True,
             )
             if self.current_state == "commercial":
@@ -526,7 +534,8 @@ class NFLTransitionDetector:
                     self.set_mute(False)
 
             # Set initial media state
-            if self.control_media:
+            # We assume the media was off to start so we only toggle it on if the initial state is commercial
+            if self.control_media and new_state == "commercial":
                 self.toggle_media()
 
             return False
@@ -609,7 +618,7 @@ class NFLTransitionDetector:
         if self.save_transitions:
             os.makedirs("transitions", exist_ok=True)
         print("=" * 70)
-        print("NFL BROADCAST TRANSITION DETECTOR")
+        print(f"{self.sport} BROADCAST TRANSITION DETECTOR")
         print("=" * 70)
         print("Monitoring Chrome tab for transitions...")
         print("Press Ctrl+C to stop\n")
@@ -698,12 +707,11 @@ class NFLTransitionDetector:
 
         print("Closing chrome...")
         try:
-            if os.name == "nt":  # Windows
-                subprocess.run(
-                    ["taskkill", "/F", "/IM", "chrome.exe"],
-                    capture_output=True,
-                    timeout=5,
-                )
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "chrome.exe"],
+                capture_output=True,
+                timeout=5,
+            )
         except:
             print("   ⚠️  Could not close existing Chrome instances.")
 
@@ -736,30 +744,46 @@ class NFLTransitionDetector:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Sports Broadcast Commercial Detector")
+    parser.add_argument(
+        "--sport",
+        type=str,
+        default=DEFAULT_SPORT,
+        help=f"Sport to detect (e.g., nfl, nba, mlb, nhl). Default: {DEFAULT_SPORT}",
+    )
+    args = parser.parse_args()
+    sport = args.sport.lower()
+    model_path = os.path.join("models", f"{sport.lower()}_classifier_best.pth")
+
     print("=" * 70)
-    print("NFL DETECTOR - CHROME TAB CAPTURE")
+    print(f"{sport.upper()} DETECTOR STARTING")
     print("=" * 70)
-    print("\nChrome will start automatically in debug mode.")
-    print("After Chrome opens, navigate to your NFL stream.")
+    print("\nAny existing chrome tabs will be closed.")
+    print("A new chrome session will start automatically in debug mode.")
+    print(f"After Chrome opens, navigate to your {sport.upper()} stream.")
     print("-" * 70)
 
     # Initialize detector with Chrome tab capture
-    detector = NFLTransitionDetector(model_path=MODEL_PATH, **DETECTION_CONFIG)
+    detector = SportsTransitionDetector(
+        model_path=model_path, sport=sport, **DETECTION_CONFIG
+    )
 
     # Give user time to navigate to their stream
     aborted = False
     if detector.driver:
         print("\n" + "=" * 70)
-        print("CHROME IS READY!")
+        print(f"{sport} DETECTOR IS READY!")
         print("=" * 70)
-        print("\n📺 NEXT STEPS:")
-        print("1. A Chrome window should be open")
-        print("2. Navigate to your NFL stream in that Chrome window")
-        print("3. Start the video playing")
-        print("4. You should use fullscreen for best results")
-        print("5. Come back here and press ENTER to start detection")
-        print("\n💡 TIP: The detector captures directly from the Chrome tab.")
-        print("   Keep the Chrome window/tab open during detection!")
+        print("\n📺 FINAL STEPS:")
+        print(
+            '1. A Chrome window should be open. Wait for it to navigate to "about:blank".'
+        )
+        print(f"2. Navigate to your {sport.upper()} stream in that Chrome tab.")
+        print("3. Start the video playing.")
+        print("4. You should use fullscreen for best results.")
+        print("5. Come back here and press ENTER to start detection.")
+        print("\n💡 TIP: The detector captures directly from the first Chrome tab.")
+        print("   Keep the first Chrome tab open during detection!")
         print("=" * 70)
         try:
             input("\nPress ENTER when your stream is playing and ready...")

@@ -1,8 +1,8 @@
-# NFL Broadcast Commercial Detector
+# Sports Broadcast Commercial Detector
 
-A transfer learning computer vision system that automatically detects transitions between NFL game footage and commercials in real-time, with automatic audio muting during commercial breaks.
+A transfer learning computer vision system that automatically detects transitions between sports game footage and commercials in real-time, with automatic audio muting during commercial breaks.
 
-Note: Parts of the code (including the remainder of the README) was AI-generated.
+Note: Parts of the code (including most of the README) was AI-generated.
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-v1.8+-red.svg)
@@ -10,6 +10,7 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
 
 ## 🎯 Features
 
+- **🏅 Multi-Sport Support**: Works with any sport - NFL, NBA, MLB, NHL, and more!
 - **🎥 Chrome Tab Capture**: Direct browser tab capture using Selenium WebDriver
 - **🤖 Real-time AI Detection**: ResNet-50 model classifies content as "game" or "commercial"
 - **🔇 Automatic Muting**: Mutes Chrome during commercials (Windows only)
@@ -35,8 +36,8 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/scottn12/NFL_Detector.git
-   cd NFL_Detector
+   git clone https://github.com/scottn12/Sports-Broadcast-Commercial-Detector.git
+   cd Sports-Broadcast-Commercial-Detector
    ```
 
 2. **Install dependencies**
@@ -46,20 +47,34 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
    
    This automatically installs ChromeDriver via `webdriver-manager` - no manual setup needed!
 
-3. **Download or train the model**
+3. **Download or train a model**
    
-   > **Note**: The pre-trained model (`nfl_classifier_best.pth`, ~92 MB) is **not included** in this repository due to its large file size. You have two options:
+   > **Note**: Pre-trained models are **not included** in this repository due to their large file size (~92 MB each). You have two options:
    
-   - **Option A**: Train your own model using `train_nfl_classifier.py` (see [Model Training](#-model-training) section)
-   - **Option B**: In the future, a pre-trained model may be made available in the [Releases](https://github.com/scottn12/NFL_Detector/releases) section. If available, download it and place it in the project root directory.
+   - **Option A**: Train your own model using `train_sports_classifier.py` (see [Model Training](#-model-training) section)
+   - **Option B**: In the future, pre-trained models may be made available in the [Releases](https://github.com/scottn12/Sports-Broadcast-Commercial-Detector/releases) section. If available, download them and place them in the `models/` directory.
+   
+   Models should be placed in a `models/` directory with sport-specific names (e.g., `models/nfl_classifier_best.pth`, `models/nba_classifier_best.pth`).
 
 4. **You're ready to go!**
+
+> **⚠️ WARNING:** When you run the detector, it will **automatically close ALL Chrome instances** to start Chrome in debug mode. Make sure to save any work in Chrome before running the detector!
 
 ### Basic Usage
 
 1. **Run the detector**
    ```bash
+   # For NFL (default)
    python detector.py
+   
+   # For NBA
+   python detector.py --sport nba
+   
+   # For MLB
+   python detector.py --sport mlb
+   
+   # For NHL
+   python detector.py --sport nhl
    ```
 
 2. **Chrome starts automatically**
@@ -69,7 +84,7 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
    - Waits for Chrome to be ready
    
 3. **Navigate to your stream**
-   - In the Chrome window that appears, go to your NFL stream
+   - In the Chrome window that appears, go to your sports stream
    - Start the video playing (fullscreen recommended)
    - Return to the terminal and press ENTER
 
@@ -83,7 +98,7 @@ Note: Parts of the code (including the remainder of the README) was AI-generated
 ### Example Session
 
 ```bash
-$ python detector.py
+$ python detector.py --sport nfl
 ======================================================================
 NFL DETECTOR - CHROME TAB CAPTURE
 ======================================================================
@@ -91,7 +106,7 @@ Chrome will start automatically in debug mode.
 After Chrome opens, navigate to your NFL stream.
 ----------------------------------------------------------------------
 
-Loading model on cpu...
+Loading NFL model on cpu...
    Chrome not running in debug mode. Starting Chrome...
    Waiting for Chrome to start...
    ✓ Chrome is ready! (took 1s)
@@ -170,25 +185,40 @@ When enabled, the detector will:
 - Works with any media player that responds to system media keys
 - Same as pressing the play/pause button on your keyboard
 
-**Note:** This toggles play/pause, so make sure your media player is in the correct initial state (paused when detection starts if watching the game).
+**Important Setup Notes:**
+
+1. **Start with media paused/stopped** - The detector assumes you're starting with the game on screen, so your media player (Spotify, etc.) should NOT be playing when you start the detector. The detector will play media during commercials and pause it during the game.
+
+2. **Disable Chrome's Hardware Media Key Handling** - This is required for media control to work properly:
+
+> **⚠️ IMPORTANT:** For media control to work properly, you must **disable "Hardware Media Key Handling"** in Chrome:
+> 1. Open Chrome and navigate to `chrome://flags`
+> 2. Search for "Hardware Media Key Handling"
+> 3. Set it to **Disabled**
+> 4. Restart Chrome
+>
+> Without this setting, Chrome may intercept media keys and apply them to your broadcast instead of your media player.
 
 ## 🏗️ Project Structure
 
 ```
-NFL_Detector/
-├── detector.py              # Main detection script
-├── config.py                # Configuration settings
-├── train_nfl_classifier.py  # Model training script
-├── nfl_classifier_best.pth  # Pre-trained model
-├── requirements.txt         # Python dependencies
-├── data/                    # Training data
+root/
+├── detector.py                     # Main detection script
+├── config.py                       # Configuration settings
+├── train_sports_classifier.py      # Model training script (replaces train_nfl_classifier.py)
+├── requirements.txt                # Python dependencies
+├── models/                         # Trained models directory
+│   ├── nfl_classifier_best.pth    # NFL model
+│   ├── nba_classifier_best.pth    # NBA model
+│   └── mlb_classifier_best.pth    # MLB model (etc.)
+├── data/                           # Training data
 │   ├── train/
-│   │   ├── game/           # Game footage images
-│   │   └── commercial/     # Commercial images
-│   ├── val/                # Validation data
-│   └── test/               # Test data
-├── screenshot_extractor_tool/  # Video processing utility
-└── transitions/            # Saved transition screenshots
+│   │   ├── game/                  # Game footage images
+│   │   └── commercial/            # Commercial images
+│   ├── val/                       # Validation data
+│   └── test/                      # Test data
+├── screenshot_extractor_tool/     # Video processing utility
+└── transitions/                   # Saved transition screenshots
 ```
 
 ## 🧠 Model Training
@@ -202,6 +232,8 @@ NFL_Detector/
    ```
 
 2. **Organize Data**
+   
+   Organize your screenshots by sport in the `data/` directory:
    ```
    data/
    ├── train/
@@ -217,8 +249,24 @@ NFL_Detector/
 
 3. **Train the Model**
    ```bash
-   python train_nfl_classifier.py
+   # Train NFL model (default)
+   python train_sports_classifier.py --sport nfl
+   
+   # Train NBA model
+   python train_sports_classifier.py --sport nba --epochs 15
+   
+   # Train with custom data directory
+   python train_sports_classifier.py --sport mlb --data-dir my_mlb_data --batch-size 64
    ```
+   
+   The trained model will be saved to `models/{sport}_classifier_best.pth`
+
+### Command-line Options for Training
+
+- `--sport`: Sport to train for (e.g., nfl, nba, mlb, nhl). Default: nfl
+- `--data-dir`: Base directory for training data. Default: data
+- `--epochs`: Number of training epochs. Default: 10
+- `--batch-size`: Batch size for training. Default: 32
 
 ### Model Architecture
 
@@ -296,8 +344,9 @@ Transition screenshots are automatically saved in `transitions/`:
 
 **Model not detecting transitions**
 - Lower `min_confidence` to 0.80 in `config.py`
-- Check if `nfl_classifier_best.pth` exists
+- Check if the correct model exists in `models/{sport}_classifier_best.pth`
 - Verify video is playing in Chrome
+- Make sure you trained a model for the sport you're trying to detect
 
 ### Performance Tips
 
@@ -354,9 +403,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you encounter issues or have questions:
 
 1. Check the [Troubleshooting](#-troubleshooting) section
-2. Search existing [Issues](https://github.com/scottn12/NFL_Detector/issues)
+2. Search existing [Issues](https://github.com/scottn12/Sports-Broadcast-Commercial-Detector/issues)
 3. Create a new issue with detailed information
 
 ---
 
-**Note**: This tool is designed for personal use to automatically mute commercials during NFL broadcasts. Ensure compliance with your local laws and streaming service terms of use.
+**Note**: This tool is designed for personal use to automatically mute commercials during sports broadcasts. Ensure compliance with your local laws and streaming service terms of use.
+
+````
