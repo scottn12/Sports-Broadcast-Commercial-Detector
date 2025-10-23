@@ -3,7 +3,8 @@
 Video Screenshot Extractor
 
 This script takes screenshots from a video file at regular intervals (default: 5 seconds)
-and saves them to a specified output folder.
+and saves them to a specified output folder. Optionally, it can automatically distribute
+the screenshots into train/val/test subdirectories (70%/15%/15% split).
 
 Requirements:
 - opencv-python (cv2)
@@ -11,6 +12,7 @@ Requirements:
 
 Usage:
 python video_screenshot_extractor.py input_video.mp4 --output_folder screenshots --interval 5
+python video_screenshot_extractor.py input_video.mp4 --output_folder screenshots --interval 5 --distribute
 """
 
 import cv2
@@ -20,7 +22,9 @@ import sys
 from pathlib import Path
 
 
-def extract_screenshots(video_path, output_folder, interval_seconds=5):
+def extract_screenshots(
+    video_path, output_folder="screenshots", interval_seconds=5, distribute=False
+):
     """
     Extract screenshots from a video file at regular intervals.
 
@@ -28,15 +32,17 @@ def extract_screenshots(video_path, output_folder, interval_seconds=5):
         video_path (str): Path to the input video file
         output_folder (str): Path to the output folder for screenshots
         interval_seconds (int): Interval between screenshots in seconds
+        distribute (bool): If True, distribute screenshots into train/val/test subdirectories
+                          (70% train, 15% val, 15% test)
 
     Returns:
-        int: Number of screenshots extracted
+        tuple: (total_screenshots, train_count, val_count, test_count) if distribute else (total_screenshots, 0, 0, 0)
     """
 
     # Check if video file exists
     if not os.path.exists(video_path):
         print(f"Error: Video file '{video_path}' not found.")
-        return 0
+        return (0, 0, 0, 0) if distribute else 0
 
     # Create output folder if it doesn't exist
     Path(output_folder).mkdir(parents=True, exist_ok=True)
@@ -46,7 +52,7 @@ def extract_screenshots(video_path, output_folder, interval_seconds=5):
 
     if not cap.isOpened():
         print(f"Error: Could not open video file '{video_path}'")
-        return 0
+        return (0, 0, 0, 0) if distribute else 0
 
     # Get video properties
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -64,9 +70,20 @@ def extract_screenshots(video_path, output_folder, interval_seconds=5):
 
     screenshot_count = 0
     frame_number = 0
+    
+    # Track counts for each split if distributing
+    train_count = 0
+    val_count = 0
+    test_count = 0
 
     # Get video filename without extension for naming screenshots
     video_name = Path(video_path).stem
+
+    # Create subdirectories if distribute is enabled
+    if distribute:
+        Path(os.path.join(output_folder, "train")).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(output_folder, "val")).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(output_folder, "test")).mkdir(parents=True, exist_ok=True)
 
     while True:
         # Set frame position
@@ -83,15 +100,38 @@ def extract_screenshots(video_path, output_folder, interval_seconds=5):
 
         # Create filename with timestamp
         filename = f"{video_name}_screenshot_{screenshot_count+1:04d}_{timestamp_seconds:.1f}s.jpg"
-        filepath = os.path.join(output_folder, filename)
+
+        # Determine destination folder using round-robin distribution
+        if distribute:
+            remainder = screenshot_count % 20
+            if remainder < 14:  # 70%
+                dest_folder = os.path.join(output_folder, "train")
+                split_label = "train"
+                train_count += 1
+            elif remainder < 17:  # 15%
+                dest_folder = os.path.join(output_folder, "val")
+                split_label = "val"
+                val_count += 1
+            else:  # 15%
+                dest_folder = os.path.join(output_folder, "test")
+                split_label = "test"
+                test_count += 1
+        else:
+            dest_folder = output_folder
+            split_label = ""
+
+        filepath = os.path.join(dest_folder, filename)
 
         # Save screenshot
         success = cv2.imwrite(filepath, frame)
 
         if success:
             screenshot_count += 1
+            split_info = ""
+            if distribute:
+                split_info = f" -> {split_label}"
             print(
-                f"Screenshot {screenshot_count}: {filename} (at {timestamp_seconds:.1f}s)"
+                f"Screenshot {screenshot_count}: {filename} (at {timestamp_seconds:.1f}s){split_info}"
             )
         else:
             print(f"Error: Failed to save screenshot {filename}")
@@ -109,7 +149,14 @@ def extract_screenshots(video_path, output_folder, interval_seconds=5):
     print(f"\nExtraction complete!")
     print(f"Total screenshots extracted: {screenshot_count}")
     print(f"Screenshots saved to: {output_folder}")
-
+    
+    if distribute:
+        print(f"\nDistribution Summary:")
+        print(f"  - Train: {train_count} ({train_count/screenshot_count*100:.1f}%)")
+        print(f"  - Val:   {val_count} ({val_count/screenshot_count*100:.1f}%)")
+        print(f"  - Test:  {test_count} ({test_count/screenshot_count*100:.1f}%)")
+        return (screenshot_count, train_count, val_count, test_count)
+    
     return screenshot_count
 
 
@@ -137,6 +184,13 @@ def main():
         help="Interval between screenshots in seconds (default: 5)",
     )
 
+    parser.add_argument(
+        "--distribute",
+        "-d",
+        action="store_true",
+        help="Distribute screenshots into train (70%), val (15%), and test (10%) subdirectories",
+    )
+
     args = parser.parse_args()
 
     # Validate interval
@@ -145,9 +199,12 @@ def main():
         sys.exit(1)
 
     # Run extraction
-    screenshot_count = extract_screenshots(
-        args.video_path, args.output_folder, args.interval
+    result = extract_screenshots(
+        args.video_path, args.output_folder, args.interval, args.distribute
     )
+    
+    # Handle return value based on whether distribute was used
+    screenshot_count = result[0] if isinstance(result, tuple) else result
 
     if screenshot_count == 0:
         sys.exit(1)

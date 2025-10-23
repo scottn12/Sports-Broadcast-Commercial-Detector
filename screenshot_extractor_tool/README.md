@@ -10,6 +10,7 @@ A Python script that extracts screenshots from video files at regular intervals 
 - Timestamps in filenames for easy identification
 - Command-line interface with flexible options
 - Error handling for invalid video files
+- Automatic distribution of screenshots into train/val/test subdirectories (70%/15%/15% split)
 
 ## Requirements
 
@@ -44,6 +45,12 @@ python video_screenshot_extractor.py training_video.mp4 --interval 10
 
 # Custom folder and interval
 python video_screenshot_extractor.py training_video.mp4 -o frames -i 2
+
+# Distribute screenshots into train/val/test subdirectories
+python video_screenshot_extractor.py training_video.mp4 --output_folder dataset --distribute
+
+# All options combined
+python video_screenshot_extractor.py training_video.mp4 -o dataset -i 5 -d
 ```
 
 ### Programmatic Usage
@@ -68,6 +75,7 @@ python example_usage.py
 - `video_path`: Path to the input video file (required)
 - `--output_folder, -o`: Output folder for screenshots (default: "screenshots")
 - `--interval, -i`: Interval between screenshots in seconds (default: 5)
+- `--distribute, -d`: Distribute screenshots into train/val/test subdirectories with a 70%/15%/15% split (optional)
 
 ## Output
 
@@ -82,6 +90,19 @@ training_video_screenshot_0001_0.0s.jpg
 training_video_screenshot_0002_5.0s.jpg
 training_video_screenshot_0003_10.0s.jpg
 ```
+
+### Distribution Feature
+
+When using the `--distribute` option, screenshots are automatically distributed into subdirectories:
+
+```
+output_folder/
+├── train/       (70% of screenshots)
+├── val/         (15% of screenshots)
+└── test/        (15% of screenshots)
+```
+
+Screenshots are evenly distributed throughout the video using round-robin assignment, ensuring a good mix from all time periods.
 
 ## Supported Video Formats
 
