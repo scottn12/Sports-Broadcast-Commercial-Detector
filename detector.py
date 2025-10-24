@@ -400,7 +400,7 @@ class SportsTransitionDetector:
             subprocess.run(
                 ["powershell", "-Command", ps_command],
                 capture_output=True,
-                timeout=1,
+                timeout=3,
                 check=True,
             )
             if self.current_state == "commercial":
