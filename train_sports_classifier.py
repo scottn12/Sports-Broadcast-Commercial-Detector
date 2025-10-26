@@ -103,7 +103,14 @@ def create_model():
 
 
 # 4. Training function
-def train_model(model, train_loader, val_loader, epochs=10, device="cuda", model_save_name="classifier_best.pth"):
+def train_model(
+    model,
+    train_loader,
+    val_loader,
+    epochs=10,
+    device="cuda",
+    model_save_name="classifier_best.pth",
+):
     model = model.to(device)
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.fc.parameters(), lr=0.001)
@@ -162,7 +169,9 @@ def train_model(model, train_loader, val_loader, epochs=10, device="cuda", model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), model_save_name)
-            print(f"  ✓ Best model saved to {model_save_name} (Val Acc: {val_acc:.2f}%)")
+            print(
+                f"  ✓ Best model saved to {model_save_name} (Val Acc: {val_acc:.2f}%)"
+            )
 
         print()
 
@@ -261,20 +270,35 @@ def predict_image(image_path, model, transform, device="cuda", sport="game"):
 # 7. Main execution
 if __name__ == "__main__":
     # Command-line arguments
-    parser = argparse.ArgumentParser(description='Train a sports broadcast commercial classifier')
-    parser.add_argument('--sport', type=str, default='nfl',
-                        help='Sport to train the model for (e.g., nfl, nba, mlb, nhl). Default: nfl')
-    parser.add_argument('--data-dir', type=str, default='data',
-                        help='Base directory for training data. Default: data')
-    parser.add_argument('--epochs', type=int, default=10,
-                        help='Number of training epochs. Default: 10')
-    parser.add_argument('--batch-size', type=int, default=32,
-                        help='Batch size for training. Default: 32')
+    parser = argparse.ArgumentParser(
+        description="Train a sports broadcast commercial classifier"
+    )
+    parser.add_argument(
+        "--sport",
+        type=str,
+        default="nfl",
+        help="Sport to train the model for (e.g., nfl, nba, mlb, nhl). Default: nfl",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="data",
+        help="Base directory for training data. Default: data",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=10, help="Number of training epochs. Default: 10"
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for training. Default: 32",
+    )
     args = parser.parse_args()
-    
+
     sport = args.sport.lower()
     data_dir = args.data_dir
-    
+
     # Setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Training {sport.upper()} classifier")
@@ -293,27 +317,44 @@ if __name__ == "__main__":
     #     game/
     #     commercial/
 
-    train_dataset = SportsDataset(os.path.join(data_dir, "train"), transform=train_transform)
+    train_dataset = SportsDataset(
+        os.path.join(data_dir, "train"), transform=train_transform
+    )
     val_dataset = SportsDataset(os.path.join(data_dir, "val"), transform=test_transform)
-    test_dataset = SportsDataset(os.path.join(data_dir, "test"), transform=test_transform)
+    test_dataset = SportsDataset(
+        os.path.join(data_dir, "test"), transform=test_transform
+    )
 
     print(f"Training samples: {len(train_dataset)}")
     print(f"Validation samples: {len(val_dataset)}")
     print(f"Test samples: {len(test_dataset)}\n")
 
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2
+    )
 
     # Create output directory for models
     os.makedirs("models", exist_ok=True)
     model_save_path = os.path.join("models", f"{sport}_classifier_best.pth")
-    
+
     # Create and train model
     model = create_model()
     print(f"Training {sport.upper()} model...\n")
-    model = train_model(model, train_loader, val_loader, epochs=args.epochs, device=device, model_save_name=model_save_path)
+    model = train_model(
+        model,
+        train_loader,
+        val_loader,
+        epochs=args.epochs,
+        device=device,
+        model_save_name=model_save_path,
+    )
 
     # Load best model for testing
     print(f"\nLoading best {sport.upper()} model for testing...")
@@ -323,7 +364,7 @@ if __name__ == "__main__":
     test_accuracy, predictions, labels, probabilities = test_model(
         model, test_loader, device
     )
-    
+
     print(f"\n✓ Model training complete! Saved to: {model_save_path}")
 
     # Example: Predict a single image
