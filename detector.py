@@ -27,6 +27,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 import socket
 import argparse
+import threading
 
 
 # Model setup
@@ -114,6 +115,12 @@ class SportsTransitionDetector:
         self.transition_count = 0
         self.start_time = time.time()
         self.state_start_time = None
+
+        # Pause detection control
+        self.paused = False
+        self.pause_lock = threading.Lock()
+        self.input_thread = None
+        self.should_stop_input_thread = False
 
         # Selenium WebDriver for Chrome tab capture
         self.driver = None
@@ -603,6 +610,30 @@ class SportsTransitionDetector:
         image.save(filename)
         print(f"   📸 Screenshot saved: {filename}")
 
+    def _input_thread_func(self):
+        """Background thread to listen for ENTER key to toggle pause"""
+        while not self.should_stop_input_thread:
+            try:
+                input()  # Wait for ENTER
+                with self.pause_lock:
+                    self.paused = not self.paused
+                    if self.paused:
+                        print("\n\n⏸️  PAUSED - Press ENTER to resume...", flush=True)
+                        # Unmute and pause media during pause (don't change current_state)
+                        if self.auto_mute:
+                            self.set_mute(False)
+                        if self.control_media and self.current_state == "commercial":
+                            self.toggle_media()
+                    else:
+                        print("\n▶️  RESUMED - Detection continuing...\n", flush=True)
+                        # Resume audio/media state based on current_state
+                        if self.auto_mute and self.current_state == "commercial":
+                            self.set_mute(True)
+                        if self.control_media and self.current_state == "commercial":
+                            self.toggle_media()
+            except:
+                break
+
     def run(self, duration=None, save_transitions=True):
         """
         Main detection loop
@@ -621,18 +652,36 @@ class SportsTransitionDetector:
         print(f"{self.sport} BROADCAST TRANSITION DETECTOR")
         print("=" * 70)
         print("Monitoring Chrome tab for transitions...")
-        print("Press Ctrl+C to stop\n")
+        print("Press Ctrl+C to stop")
+        print("Press ENTER to pause/resume detection\n")
 
         print(f"\nStarting in 3 seconds...")
         time.sleep(3)
         print("🔴 MONITORING ACTIVE\n")
 
+        # Start input thread for pause functionality
+        self.should_stop_input_thread = False
+        self.input_thread = threading.Thread(
+            target=self._input_thread_func, daemon=True
+        )
+        self.input_thread.start()
+
         iteration = 0
 
         try:
             while True:
-                iteration += 1
                 loop_start = time.time()
+
+                # Check if paused FIRST before doing anything
+                with self.pause_lock:
+                    is_paused = self.paused
+
+                if is_paused:
+                    time.sleep(0.1)  # Sleep briefly while paused
+                    continue
+
+                # Only increment iteration if not paused
+                iteration += 1
 
                 # Check duration limit
                 if duration and (loop_start - self.start_time) > duration:
@@ -685,13 +734,25 @@ class SportsTransitionDetector:
 
                 print(f"\r{status_line}", end="", flush=True)
 
-                # Sleep until next check
+                # Sleep until next check - but check for pause periodically
                 elapsed_iteration = time.time() - loop_start
                 sleep_time = max(0, self.check_interval - elapsed_iteration)
-                time.sleep(sleep_time)
+
+                # Sleep in small increments to be responsive to pause requests
+                sleep_start = time.time()
+                while (time.time() - sleep_start) < sleep_time:
+                    with self.pause_lock:
+                        if self.paused:
+                            break  # Exit sleep early if paused
+                    time.sleep(0.1)  # Sleep in 100ms increments
 
         except KeyboardInterrupt:
             print("\n\n⏹ Stopped by user")
+        finally:
+            # Signal input thread to stop
+            self.should_stop_input_thread = True
+            if self.input_thread and self.input_thread.is_alive():
+                self.input_thread.join(timeout=1)
 
     def cleanup(self):
         """Cleanup resources (WebDriver, audio, etc.)"""
@@ -772,7 +833,7 @@ if __name__ == "__main__":
     aborted = False
     if detector.driver:
         print("\n" + "=" * 70)
-        print(f"{sport} DETECTOR IS READY!")
+        print(f"{sport.upper()} DETECTOR IS READY!")
         print("=" * 70)
         print("\n📺 FINAL STEPS:")
         print(
