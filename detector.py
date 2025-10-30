@@ -551,7 +551,6 @@ class SportsTransitionDetector:
         if new_state != self.current_state:
             # Check confidence threshold
             if confidence < self.min_confidence:
-                print(f"  ⚠️  Low confidence ({confidence:.1%}) - ignoring transition")
                 return False
 
             # Check cooldown period
