@@ -28,6 +28,9 @@ from selenium.webdriver.chrome.service import Service
 import socket
 import argparse
 import threading
+import subprocess
+import os
+import time
 
 
 # Model setup
@@ -66,8 +69,11 @@ class SportsTransitionDetector:
         auto_mute,
         min_confidence,
         control_media,
-        browser="chrome",
+        browser="Chrome",
         chrome_debug_port=9222,
+        duration=None,
+        save_transitions=True,
+        default_website="about:blank",
     ):
         """
         Initialize the sports broadcast transition detector
@@ -93,18 +99,26 @@ class SportsTransitionDetector:
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model = self.model.to(self.device)
         self.model.eval()
+        print(f"✓ Model loaded successfully using device: {self.device}\n")
 
-        # Configuration
+        # Detection configs
         self.threshold = threshold
         self.cooldown_seconds = cooldown_seconds
         self.check_interval = check_interval
         self.smoothing_window = smoothing_window
         self.auto_mute = auto_mute
-        self.browser = browser
         self.min_confidence = min_confidence
         self.control_media = control_media
+
+        # Runtime configs
+        self.duration = duration
+        self.save_transitions = save_transitions
+        self.default_website = default_website
+
+        # Browser configs
+        self.browser = browser
         self.chrome_debug_port = chrome_debug_port
-        self.save_transitions = True  # Default, can be overridden in run()
+        self.browser_audio_session = None
 
         # State tracking
         self.current_state = None  # "game" or "commercial"
@@ -123,33 +137,21 @@ class SportsTransitionDetector:
         self.should_stop_input_thread = False
 
         # Selenium WebDriver for Chrome tab capture
-        self.driver = None
-        try:
-            self.driver = self._setup_chrome_driver()
-            print(f"✓ Chrome WebDriver initialized (tab capture enabled)")
-        except Exception as e:
-            print(f"⚠️  Could not initialize Chrome WebDriver: {e}")
-            print("   Falling back to screen capture method")
-            self.driver = None
+        self.driver = self._setup_chrome_driver()
+        print(f"✓ Chrome WebDriver initialized\n")
 
-        # Audio control setup (Windows) - browser-specific
-        self.browser_audio_session = None
-        if self.auto_mute:
-            # Don't initialize audio control yet - will do it when stream starts playing
-            # Chrome needs to be playing audio before we can control it
-            print(f"✓ Audio control will be initialized when stream starts playing")
-
-        print("✓ Model loaded successfully!")
-        print(f"✓ Using device: {self.device}")
+        print("✓ Loaded with configurations:")
+        print(f"    Threshold: {threshold:.0%} ")
+        print(f"    Smoothing window: {smoothing_window} predictions")
+        print(f"    Minimum confidence: {min_confidence:.0%}")
+        print(f"    Check interval: {check_interval} seconds")
+        print(f"    Cooldown period: {cooldown_seconds} seconds")
+        print(f"    Auto-mute commercials: {'Yes' if self.auto_mute else 'No'}")
+        print(f"    Control media playback: {'Yes' if self.control_media else 'No'}")
+        print(f"    Saving transitions: {'Yes' if self.save_transitions else 'No'}")
         print(
-            f"✓ Capture method: {'Chrome Tab Capture API' if self.driver else 'Screen Capture'}"
+            f"    Max duration: {'Unlimited' if self.duration is None else f'{self.duration} seconds'}"
         )
-        print(f"✓ Cooldown period: {cooldown_seconds} seconds")
-        print(f"✓ Check interval: {check_interval} seconds")
-        print(f"✓ Smoothing window: {smoothing_window} predictions")
-        print(f"✓ Minimum confidence: {min_confidence:.0%}")
-        print(f"✓ Auto-mute commercials: {'Yes' if self.auto_mute else 'No'}")
-        print(f"✓ Control media playback: {'Yes' if self.control_media else 'No'}\n")
 
     def _setup_chrome_driver(self):
         """
@@ -163,7 +165,6 @@ class SportsTransitionDetector:
 
         self._start_chrome_debug_mode()
         # Wait for Chrome to start and become available
-        import time
 
         print(f"   Waiting for Chrome to start...")
         max_wait = 20  # seconds - increased timeout
@@ -177,7 +178,7 @@ class SportsTransitionDetector:
             if sock.connect_ex(("127.0.0.1", self.chrome_debug_port)) == 0:
                 sock.close()
                 chrome_started = True
-                print(f"   Chrome is ready! (took {waited}s)")
+                print(f"   Chrome has started")
                 break
             sock.close()
             if waited % 5 == 0:
@@ -200,45 +201,28 @@ class SportsTransitionDetector:
         # Set page load strategy to prevent hanging on slow pages
         options.page_load_strategy = "eager"
 
-        try:
-            # Use webdriver-manager to automatically download and manage ChromeDriver
-            service = Service(ChromeDriverManager().install())
+        # Use webdriver-manager to automatically download and manage ChromeDriver
+        service = Service(ChromeDriverManager().install())
 
-            # Create driver with timeout
-            print(f"   Initializing WebDriver (this may take a moment)...")
-            driver = webdriver.Chrome(service=service, options=options)
+        # Create driver with timeout
+        print(f"   Initializing WebDriver")
+        driver = webdriver.Chrome(service=service, options=options)
 
-            # Set timeouts to prevent hanging
-            driver.set_page_load_timeout(30)
-            driver.set_script_timeout(30)
+        # Set timeouts to prevent hanging
+        driver.set_page_load_timeout(30)
+        driver.set_script_timeout(30)
 
-            # Make sure we have at least one window/tab
-            if len(driver.window_handles) == 0:
-                driver.switch_to.new_window("tab")
+        # Make sure we have at least one window/tab
+        if len(driver.window_handles) == 0:
+            driver.switch_to.new_window("tab")
 
-            # Navigate to a simple page that will stay open
-            # User can open their stream in a new tab, or navigate this tab to their stream
-            try:
-                driver.get("about:blank")
-            except:
-                pass  # Ignore navigation errors
-
-            return driver
-        except WebDriverException as e:
-            if self.use_existing_chrome:
-                print(f"\n⚠️  Could not connect to Chrome.")
-                print(f"   Error: {e}")
-                print(f"   Chrome should have been started automatically.\n")
-            raise
+        return driver
 
     def _start_chrome_debug_mode(self):
         """
         Start Chrome in debug mode with remote debugging enabled
         Closes existing Chrome instances and starts with your default profile
         """
-        import subprocess
-        import os
-        import time
 
         # Common Chrome installation paths
         chrome_paths = [
@@ -263,6 +247,7 @@ class SportsTransitionDetector:
                 "Chrome not found. Please install Google Chrome or specify the path manually."
             )
 
+        print(f"Setting up chrome...")
         print(f"   Closing any existing Chrome instances...")
         # Close all Chrome instances to allow starting with debug port
         try:
@@ -282,6 +267,7 @@ class SportsTransitionDetector:
             chrome_path,
             f"--remote-debugging-port={self.chrome_debug_port}",
             f"--user-data-dir={debug_profile_dir}",
+            self.default_website,
         ]
 
         print(f"   Starting Chrome from: {chrome_path}")
@@ -304,14 +290,11 @@ class SportsTransitionDetector:
         Returns:
             Audio session object or None if not found
         """
-        # Map browser names to executable names
         browser_executables = {
-            "firefox": "firefox.exe",
             "chrome": "chrome.exe",
-            "edge": "msedge.exe",
         }
 
-        target_exe = browser_executables.get(self.browser)
+        target_exe = browser_executables.get(self.browser.lower())
         if not target_exe:
             print(f"⚠️  Unknown browser: {self.browser}")
             return None
@@ -337,7 +320,7 @@ class SportsTransitionDetector:
         try:
             self.browser_audio_session = self._find_browser_audio_session()
             if self.browser_audio_session:
-                print(f"   ✓ {self.browser} audio control initialized")
+                print(f"✓ {self.browser} audio control initialized")
                 return True
             else:
                 # Only warn once
@@ -411,9 +394,9 @@ class SportsTransitionDetector:
                 check=True,
             )
             if self.current_state == "commercial":
-                print(f"   ▶️  Media played")
+                print(f"   Media played ▶️")
             else:
-                print(f"   ⏸️  Media paused")
+                print(f"   Media paused ⏸️")
         except Exception as e:
             print(f"   ⚠️  Could not play media: {e}")
 
@@ -431,11 +414,13 @@ class SportsTransitionDetector:
 
         try:
             # Make sure we're capturing the active window
-            # Try to find the window with actual content (not about:blank)
+            # Try to find the window with the default website
             try:
                 current_url = self.driver.current_url
-                # If we're on about:blank and there are other windows, switch to the last one
-                if current_url == "about:blank" and len(self.driver.window_handles) > 1:
+                if (
+                    current_url == self.default_website
+                    and len(self.driver.window_handles) > 1
+                ):
                     self.driver.switch_to.window(self.driver.window_handles[-1])
             except:
                 pass  # Ignore window switching errors
@@ -633,7 +618,7 @@ class SportsTransitionDetector:
             except:
                 break
 
-    def run(self, duration=None, save_transitions=True):
+    def run(self):
         """
         Main detection loop
 
@@ -642,19 +627,21 @@ class SportsTransitionDetector:
             save_transitions: Determines if we should save transition screenshots for this run
         """
 
-        self.save_transitions = save_transitions
-
         # Create transitions directory if needed
         if self.save_transitions:
             os.makedirs("transitions", exist_ok=True)
+
+        print("\n")
         print("=" * 70)
         print(f"{self.sport} BROADCAST TRANSITION DETECTOR")
         print("=" * 70)
+        print("\n")
+        self._ensure_audio_control()  # Try to initialize audio control now that the stream should be playing
         print("Monitoring Chrome tab for transitions...")
         print("Press Ctrl+C to stop")
         print("Press ENTER to pause/resume detection\n")
 
-        print(f"\nStarting in 3 seconds...")
+        print(f"Starting in 3 seconds...")
         time.sleep(3)
         print("🔴 MONITORING ACTIVE\n")
 
@@ -683,7 +670,7 @@ class SportsTransitionDetector:
                 iteration += 1
 
                 # Check duration limit
-                if duration and (loop_start - self.start_time) > duration:
+                if self.duration and (loop_start - self.start_time) > self.duration:
                     print("\n⏰ Duration limit reached")
                     break
 
@@ -721,7 +708,7 @@ class SportsTransitionDetector:
                     is_muted = self.get_mute_status()
                     if is_muted is not None:
                         mute_status = (
-                            f" | Audio: {'🔇 MUTED' if is_muted else '🔊 UNMUTED'}"
+                            f" | Audio: {'MUTED 🔇' if is_muted else 'UNMUTED 🔊'}"
                         )
 
                 status_line = (
@@ -746,7 +733,7 @@ class SportsTransitionDetector:
                     time.sleep(0.1)  # Sleep in 100ms increments
 
         except KeyboardInterrupt:
-            print("\n\n⏹ Stopped by user")
+            print("\n\n🛑 Stopped by user")
         finally:
             # Signal input thread to stop
             self.should_stop_input_thread = True
@@ -825,7 +812,7 @@ if __name__ == "__main__":
 
     # Initialize detector with Chrome tab capture
     detector = SportsTransitionDetector(
-        model_path=model_path, sport=sport, **DETECTION_CONFIG
+        model_path=model_path, sport=sport, **DETECTION_CONFIG, **RUNTIME_CONFIG
     )
 
     # Give user time to navigate to their stream
@@ -836,12 +823,11 @@ if __name__ == "__main__":
         print("=" * 70)
         print("\n📺 FINAL STEPS:")
         print(
-            '1. A Chrome window should be open. Wait for it to navigate to "about:blank".'
+            f'1. A Chrome window should be open. Navigate to your {sport.upper()} stream in the first tab.'
         )
-        print(f"2. Navigate to your {sport.upper()} stream in that Chrome tab.")
-        print("3. Start the video playing.")
-        print("4. You should use fullscreen for best results.")
-        print("5. Come back here and press ENTER to start detection.")
+        print("2. Ensure it's playing with audio on.")
+        print("3. You should use fullscreen for best results.")
+        print("4. Come back here and press ENTER to start detection.")
         print("\n💡 TIP: The detector captures directly from the first Chrome tab.")
         print("   Keep the first Chrome tab open during detection!")
         print("=" * 70)
@@ -853,6 +839,6 @@ if __name__ == "__main__":
     # Run detector
     try:
         if not aborted:
-            detector.run(**RUNTIME_CONFIG)
+            detector.run()
     finally:
         detector.cleanup()

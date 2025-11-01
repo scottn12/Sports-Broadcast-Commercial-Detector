@@ -20,4 +20,5 @@ DETECTION_CONFIG = {
 RUNTIME_CONFIG = {
     "duration": None,  # Runtime limit in seconds (None = run forever)
     "save_transitions": False,  # Save screenshots of transitions
+    "default_website": "https://www.google.com",  # Default website to open
 }
